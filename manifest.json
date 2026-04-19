@@ -1,0 +1,29 @@
+{
+  "name": "Learning Assistant",
+  "description": "AI support for online learning",
+  "version": "1.0",
+  "manifest_version": 3,
+
+  "permissions": ["sidePanel", "storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_title": "Learning Assistant"
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}
