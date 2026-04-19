@@ -91,12 +91,21 @@ const questions = [
 let currentStep = 0;
 let answers = {};
 
-const app = document.getElementById("app");
-
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  const app = document.getElementById("app");
+
+  if (!app) {
+    console.error('Missing #app container in sidepanel.html');
+    return;
+  }
+
   const stored = await chrome.storage.local.get(["onboardingComplete", "onboardingAnswers"]);
+
+  if (stored.onboardingAnswers) {
+    answers = stored.onboardingAnswers;
+  }
 
   if (stored.onboardingComplete && stored.onboardingAnswers) {
     renderHome(stored.onboardingAnswers);
@@ -107,7 +116,9 @@ async function init() {
 }
 
 function renderQuestion() {
+  const app = document.getElementById("app");
   const currentQuestion = questions[currentStep];
+  const savedAnswer = answers[currentQuestion.key];
 
   app.innerHTML = `
     <div class="panel">
@@ -125,7 +136,7 @@ function renderQuestion() {
         ${currentQuestion.options
           .map(
             (option) => `
-              <button class="option-btn" data-value="${option.value}">
+              <button class="option-btn ${savedAnswer === option.value ? "selected" : ""}" data-value="${option.value}">
                 ${option.label}
               </button>
             `
@@ -134,11 +145,7 @@ function renderQuestion() {
       </div>
 
       <div class="footer-row">
-        ${
-          currentStep > 0
-            ? `<button id="backBtn" class="secondary-btn">Back</button>`
-            : `<div></div>`
-        }
+        ${currentStep > 0 ? `<button id="backBtn" class="secondary-btn">Back</button>` : `<div></div>`}
       </div>
     </div>
   `;
@@ -157,6 +164,10 @@ async function handleAnswer(value) {
   const currentQuestion = questions[currentStep];
   answers[currentQuestion.key] = value;
 
+  await chrome.storage.local.set({
+    onboardingAnswers: answers
+  });
+
   if (currentStep < questions.length - 1) {
     currentStep += 1;
     renderQuestion();
@@ -173,14 +184,13 @@ async function handleAnswer(value) {
 
 function handleBack() {
   if (currentStep === 0) return;
-
-  const currentQuestion = questions[currentStep];
-  delete answers[currentQuestion.key];
   currentStep -= 1;
   renderQuestion();
 }
 
 function renderHome(savedAnswers) {
+  const app = document.getElementById("app");
+
   app.innerHTML = `
     <div class="panel">
       <h1 class="title">Learning Assistant</h1>
