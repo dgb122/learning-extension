@@ -97,11 +97,20 @@ async function init() {
   const app = document.getElementById("app");
 
   if (!app) {
-    console.error('Missing #app container in sidepanel.html');
+    console.error("Missing #app container");
     return;
   }
 
-  const stored = await chrome.storage.local.get(["onboardingComplete", "onboardingAnswers"]);
+  const stored = await chrome.storage.local.get([
+    "onboardingStarted",
+    "onboardingComplete",
+    "onboardingAnswers"
+  ]);
+
+  if (!stored.onboardingStarted) {
+    renderIntro();
+    return;
+  }
 
   if (stored.onboardingAnswers) {
     answers = stored.onboardingAnswers;
@@ -115,8 +124,42 @@ async function init() {
   renderQuestion();
 }
 
+function renderIntro() {
+  const app = document.getElementById("app");
+
+  if (!app) return;
+
+  app.innerHTML = `
+    <div class="panel">
+      <h1 class="title">Meet your AI Study Mentor</h1>
+      <p class="subtitle">
+        This isn’t just a tool. It’s a personalised mentor that learns how you study, keeps you on track, and adapts to you.
+      </p>
+
+      <div class="summary-box">
+        <p>We’ll set it up in under 1 minute.</p>
+        <p>Answer a few quick questions and your mentor will be ready.</p>
+      </div>
+
+      <div class="home-actions">
+        <button id="startBtn" class="primary-btn">Set up my mentor</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("startBtn").addEventListener("click", async () => {
+    await chrome.storage.local.set({ onboardingStarted: true });
+    renderQuestion();
+  });
+}
+
 function renderQuestion() {
   const app = document.getElementById("app");
+
+  if (!app) {
+    console.error("Missing #app in sidepanel.html");
+    return;
+  }
   const currentQuestion = questions[currentStep];
   const savedAnswer = answers[currentQuestion.key];
 
@@ -191,10 +234,17 @@ function handleBack() {
 function renderHome(savedAnswers) {
   const app = document.getElementById("app");
 
+  if (!app) {
+    console.error("Missing #app in sidepanel.html");
+    return;
+  }
+
   app.innerHTML = `
     <div class="panel">
-      <h1 class="title">Learning Assistant</h1>
-      <p class="subtitle">Your onboarding is complete.</p>
+      <h1 class="title">Your AI Study Mentor is ready</h1>
+      <p class="subtitle">
+      I’ll adapt to how you learn, keep you consistent, and help you stay on track.
+      </p>
 
       <div class="summary-box">
         <p><strong>Study level:</strong> ${formatValue(savedAnswers.studyLevel)}</p>
