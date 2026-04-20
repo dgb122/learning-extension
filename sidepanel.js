@@ -106,7 +106,10 @@ async function init() {
     "onboardingComplete",
     "onboardingAnswers",
     "mentorPreferences",
-    "lastSessionEndedAt"
+    "lastSessionEndedAt",
+    "liveTracking",
+    "currentSession",
+    "sessions"
   ]);
 
   if (!stored.onboardingStarted) {
@@ -126,7 +129,13 @@ async function init() {
   );
 
   if (stored.onboardingComplete && stored.onboardingAnswers) {
-    renderHome(stored.onboardingAnswers, comebackStatus);
+    renderHome(
+      stored.onboardingAnswers,
+      comebackStatus,
+      stored.liveTracking || null,
+      stored.currentSession || null,
+      stored.sessions || []
+    );
     return;
   }
 
@@ -241,7 +250,19 @@ async function handleAnswer(value) {
     mentorPreferences
   );
 
-  renderHome(answers, comebackStatus);
+  const trackingStored = await chrome.storage.local.get([
+    "liveTracking",
+    "currentSession",
+    "sessions"
+  ]);
+
+  renderHome(
+    answers,
+    comebackStatus,
+    trackingStored.liveTracking || null,
+    trackingStored.currentSession || null,
+    trackingStored.sessions || []
+  );
 }
 
 function handleBack() {
@@ -250,7 +271,7 @@ function handleBack() {
   renderQuestion();
 }
 
-function renderHome(savedAnswers, comebackStatus) {
+function renderHome(savedAnswers, comebackStatus, liveTracking, currentSession, sessions) {
   const app = document.getElementById("app");
 
   if (!app) {
@@ -258,14 +279,19 @@ function renderHome(savedAnswers, comebackStatus) {
     return;
   }
 
+  const totalActiveMs = liveTracking?.activeMs || 0;
+  const sessionCount = sessions?.length || 0;
+  const isStudyingNow = !!currentSession;
+
   app.innerHTML = `
     <div class="panel">
       <h1 class="title">Your AI Study Mentor is ready</h1>
       <p class="subtitle">
-      I’ll adapt to how you learn, keep you consistent, and help you stay on track.
+        I’ll adapt to how you learn, keep you consistent, and help you stay on track.
       </p>
 
       <div class="summary-box">
+        <p><strong>Your profile</strong></p>
         <p><strong>Study level:</strong> ${formatValue(savedAnswers.studyLevel)}</p>
         <p><strong>Weekly study time:</strong> ${formatValue(savedAnswers.weeklyStudyTime)}</p>
         <p><strong>Deadline management:</strong> ${formatValue(savedAnswers.deadlineManagement)}</p>
@@ -275,8 +301,15 @@ function renderHome(savedAnswers, comebackStatus) {
         <p><strong>Preferred mentor tone:</strong> ${formatValue(savedAnswers.mentorTone)}</p>
         <p><strong>Reminder style:</strong> ${formatValue(savedAnswers.reminderStyle)}</p>
         <p><strong>Check-in frequency:</strong> ${formatValue(savedAnswers.checkInFrequency)}</p>
-        <p><strong>Study return status:</strong> ${comebackStatus.label}</p>
+      </div>
+
+      <div class="summary-box">
+        <p><strong>Study activity</strong></p>
+        <p><strong>Status:</strong> ${isStudyingNow ? "Studying now" : "Not currently studying"}</p>
+        <p><strong>Last active:</strong> ${comebackStatus.label}</p>
         <p><strong>Check-in needed:</strong> ${comebackStatus.shouldNudge ? "Yes" : "No"}</p>
+        <p><strong>Total active study time:</strong> ${formatDuration(totalActiveMs)}</p>
+        <p><strong>Completed sessions:</strong> ${sessionCount}</p>
       </div>
 
       <div class="home-actions">
@@ -380,4 +413,17 @@ function formatValue(value) {
   return value
     .replaceAll("_", " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return "0m";
+
+  const totalMinutes = Math.floor(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+
+  return `${hours}h ${minutes}m`;
 }

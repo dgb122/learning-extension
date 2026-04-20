@@ -17,14 +17,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const tabId = sender.tab?.id;
     const windowId = sender.tab?.windowId;
 
-    if (typeof windowId === "number") {
-      chrome.sidePanel.open({ windowId }).catch((error) => {
-        console.error("Failed to open side panel:", error);
-      });
-    } else if (typeof tabId === "number") {
-      chrome.sidePanel.open({ tabId }).catch((error) => {
-        console.error("Failed to open side panel:", error);
-      });
+    if (typeof tabId === "number") {
+      chrome.sidePanel
+        .setOptions({
+         tabId,
+         path: "sidepanel.html",
+          enabled: true
+        })
+        .then(() => {
+         if (typeof windowId === "number") {
+           return chrome.sidePanel.open({ windowId });
+          }
+
+          return chrome.sidePanel.open({ tabId });
+        })
+        .catch((error) => {
+          console.error("Failed to open side panel:", error);
+        });
     }
   }
 
