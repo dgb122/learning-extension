@@ -104,7 +104,9 @@ async function init() {
   const stored = await chrome.storage.local.get([
     "onboardingStarted",
     "onboardingComplete",
-    "onboardingAnswers"
+    "onboardingAnswers",
+    "mentorPreferences",
+    "lastSessionEndedAt"
   ]);
 
   if (!stored.onboardingStarted) {
@@ -116,8 +118,15 @@ async function init() {
     answers = stored.onboardingAnswers;
   }
 
+  const mentorPreferences = stored.mentorPreferences || {};
+  const lastSessionEndedAt = stored.lastSessionEndedAt || null;
+  const comebackStatus = buildComebackStatus(
+    lastSessionEndedAt,
+    mentorPreferences
+  );
+
   if (stored.onboardingComplete && stored.onboardingAnswers) {
-    renderHome(stored.onboardingAnswers);
+    renderHome(stored.onboardingAnswers, comebackStatus);
     return;
   }
 
@@ -208,7 +217,8 @@ async function handleAnswer(value) {
   answers[currentQuestion.key] = value;
 
   await chrome.storage.local.set({
-    onboardingAnswers: answers
+    onboardingAnswers: answers,
+    mentorPreferences: buildMentorPreferences(answers)
   });
 
   if (currentStep < questions.length - 1) {
@@ -217,12 +227,21 @@ async function handleAnswer(value) {
     return;
   }
 
+  const mentorPreferences = buildMentorPreferences(answers);
+
   await chrome.storage.local.set({
     onboardingComplete: true,
-    onboardingAnswers: answers
+    onboardingAnswers: answers,
+    mentorPreferences
   });
 
-  renderHome(answers);
+  const stored = await chrome.storage.local.get(["lastSessionEndedAt"]);
+  const comebackStatus = buildComebackStatus(
+    stored.lastSessionEndedAt || null,
+    mentorPreferences
+  );
+
+  renderHome(answers, comebackStatus);
 }
 
 function handleBack() {
@@ -231,7 +250,7 @@ function handleBack() {
   renderQuestion();
 }
 
-function renderHome(savedAnswers) {
+function renderHome(savedAnswers, comebackStatus) {
   const app = document.getElementById("app");
 
   if (!app) {
@@ -256,6 +275,8 @@ function renderHome(savedAnswers) {
         <p><strong>Preferred mentor tone:</strong> ${formatValue(savedAnswers.mentorTone)}</p>
         <p><strong>Reminder style:</strong> ${formatValue(savedAnswers.reminderStyle)}</p>
         <p><strong>Check-in frequency:</strong> ${formatValue(savedAnswers.checkInFrequency)}</p>
+        <p><strong>Study return status:</strong> ${comebackStatus.label}</p>
+        <p><strong>Check-in needed:</strong> ${comebackStatus.shouldNudge ? "Yes" : "No"}</p>
       </div>
 
       <div class="home-actions">
@@ -265,11 +286,92 @@ function renderHome(savedAnswers) {
   `;
 
   document.getElementById("resetBtn").addEventListener("click", async () => {
-    await chrome.storage.local.remove(["onboardingComplete", "onboardingAnswers"]);
+    await chrome.storage.local.remove([
+      "onboardingComplete",
+      "onboardingAnswers",
+      "mentorPreferences"
+    ]);
     currentStep = 0;
     answers = {};
     renderQuestion();
   });
+}
+
+function buildMentorPreferences(onboardingAnswers) {
+  const deadlineManagement = onboardingAnswers.deadlineManagement || "";
+  const independentConfidence = onboardingAnswers.independentConfidence || "";
+  const fallBehindCause = onboardingAnswers.fallBehindCause || "";
+  const fallBehindReaction = onboardingAnswers.fallBehindReaction || "";
+
+  const needsMoreStructure =
+    deadlineManagement === "last_minute" ||
+    deadlineManagement === "often_miss" ||
+    fallBehindReaction === "need_external_reminders" ||
+    independentConfidence === "not_confident";
+
+  const higherRiskOfFallingBehind =
+    deadlineManagement === "often_miss" ||
+    fallBehindCause === "poor_time_management" ||
+    fallBehindCause === "heavy_workload" ||
+    fallBehindCause === "stress_anxiety_low_motivation";
+
+  return {
+    mentorTone: onboardingAnswers.mentorTone || "supportive",
+    reminderStyle: onboardingAnswers.reminderStyle || "gentle",
+    checkInFrequency: onboardingAnswers.checkInFrequency || "sometimes",
+    weeklyStudyTime: onboardingAnswers.weeklyStudyTime || null,
+    studyLevel: onboardingAnswers.studyLevel || null,
+    needsMoreStructure,
+    higherRiskOfFallingBehind
+  };
+}
+
+function buildComebackStatus(lastSessionEndedAt, mentorPreferences) {
+  if (!lastSessionEndedAt) {
+    return {
+      label: "No study sessions yet",
+      level: "new",
+      shouldNudge: false,
+      hoursSinceLastSession: null
+    };
+  }
+
+  const now = Date.now();
+  const hoursSinceLastSession = Math.floor(
+    (now - lastSessionEndedAt) / (1000 * 60 * 60)
+  );
+
+  const checkInFrequency = mentorPreferences?.checkInFrequency || "sometimes";
+
+  let nudgeThresholdHours = 48;
+
+  if (checkInFrequency === "often") {
+    nudgeThresholdHours = 24;
+  } else if (checkInFrequency === "rarely") {
+    nudgeThresholdHours = 72;
+  }
+
+  let label = "Last active recently";
+  let level = "recent";
+
+  if (hoursSinceLastSession < 24) {
+    label = "Last active today";
+    level = "recent";
+  } else if (hoursSinceLastSession < 48) {
+    label = "Last active 1 day ago";
+    level = "cooling";
+  } else {
+    const days = Math.floor(hoursSinceLastSession / 24);
+    label = `Last active ${days} days ago`;
+    level = "away";
+  }
+
+  return {
+    label,
+    level,
+    shouldNudge: hoursSinceLastSession >= nudgeThresholdHours,
+    hoursSinceLastSession
+  };
 }
 
 function formatValue(value) {
