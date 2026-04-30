@@ -877,7 +877,7 @@ async function callMentorAPIForChat(studentAnswer, questionNumber, conversation)
 
     const data = await chrome.storage.local.get(["onboardingAnswers"]);
 
-    const response = await fetch("http://localhost:3000/api/mentor", {
+    const response = await fetch("https://learning-extension.onrender.com/api/mentor", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
