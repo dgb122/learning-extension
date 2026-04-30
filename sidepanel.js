@@ -291,19 +291,6 @@ function renderHome(savedAnswers, comebackStatus, liveTracking, currentSession, 
       </p>
 
       <div class="summary-box">
-        <p><strong>Your profile</strong></p>
-        <p><strong>Study level:</strong> ${formatValue(savedAnswers.studyLevel)}</p>
-        <p><strong>Weekly study time:</strong> ${formatValue(savedAnswers.weeklyStudyTime)}</p>
-        <p><strong>Deadline management:</strong> ${formatValue(savedAnswers.deadlineManagement)}</p>
-        <p><strong>Independent study confidence:</strong> ${formatValue(savedAnswers.independentConfidence)}</p>
-        <p><strong>Main reason for falling behind:</strong> ${formatValue(savedAnswers.fallBehindCause)}</p>
-        <p><strong>Reaction when behind:</strong> ${formatValue(savedAnswers.fallBehindReaction)}</p>
-        <p><strong>Preferred mentor tone:</strong> ${formatValue(savedAnswers.mentorTone)}</p>
-        <p><strong>Reminder style:</strong> ${formatValue(savedAnswers.reminderStyle)}</p>
-        <p><strong>Check-in frequency:</strong> ${formatValue(savedAnswers.checkInFrequency)}</p>
-      </div>
-
-      <div class="summary-box">
         <p><strong>Study activity</strong></p>
         <p><strong>Status:</strong> ${isStudyingNow ? "Studying now" : "Not currently studying"}</p>
         <p><strong>Last active:</strong> ${comebackStatus.label}</p>

@@ -13,30 +13,6 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "OPEN_SIDE_PANEL") {
-    const tabId = sender.tab?.id;
-    const windowId = sender.tab?.windowId;
-
-    if (typeof tabId === "number") {
-      chrome.sidePanel
-        .setOptions({
-         tabId,
-         path: "sidepanel.html",
-          enabled: true
-        })
-        .then(() => {
-         if (typeof windowId === "number") {
-           return chrome.sidePanel.open({ windowId });
-          }
-
-          return chrome.sidePanel.open({ tabId });
-        })
-        .catch((error) => {
-          console.error("Failed to open side panel:", error);
-        });
-    }
-  }
-
   if (message.type === "COURSE_PAGE_INFO") {
     handlePageInfo(message.pageInfo);
   }
