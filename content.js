@@ -1131,7 +1131,7 @@ async function callQuizSummaryAPI() {
     const pageInfo = getCourseraPageInfo();
     const data = await chrome.storage.local.get(["onboardingAnswers"]);
 
-    const response = await fetch("http://localhost:3000/api/mentor", {
+    const response = await fetch("https://learning-extension.onrender.com/api/mentor", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1162,7 +1162,7 @@ async function callMentorAPIForQuiz() {
     const pageInfo = getCourseraPageInfo();
     const data = await chrome.storage.local.get(["onboardingAnswers"]);
 
-    const response = await fetch("http://localhost:3000/api/mentor", {
+    const response = await fetch("https://learning-extension.onrender.com/api/mentor", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1252,7 +1252,7 @@ async function callExampleAPI() {
 
     const data = await chrome.storage.local.get(["onboardingAnswers"]);
 
-    const response = await fetch("http://localhost:3000/api/mentor", {
+    const response = await fetch("https://learning-extension.onrender.com/api/mentor", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1286,7 +1286,7 @@ async function callMentorAPI(action) {
       "onboardingAnswers"
     ]);
 
-    const response = await fetch("http://localhost:3000/api/mentor", {
+    const response = await fetch("https://learning-extension.onrender.com/api/mentor", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1296,6 +1296,7 @@ async function callMentorAPI(action) {
         pageTitle: pageInfo?.title || "",
         pageUrl: window.location.href,
         onboardingAnswers: data.onboardingAnswers || {},
+        conversation: []
       }),
     });
 
