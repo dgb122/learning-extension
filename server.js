@@ -161,6 +161,7 @@ ${JSON.stringify(onboardingAnswers || {}, null, 2)}
     - Never say "you prefer a neutral tone", "based on your onboarding", or anything that reveals personalisation settings.
     - If the request is general, choose the clearest main topic from the current page and explain it directly.
     - Structure the answer as: simple explanation, why it matters, quick example, key takeaway.
+    - The final answer must not contain these phrases: "specific question", "you mentioned", "when you're ready", "feel free", "share", "onboarding", "deadline", "motivation".
 
     Your job:
     - Explain the topic clearly.

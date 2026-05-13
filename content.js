@@ -1123,6 +1123,12 @@ function getStudyStreakDays(sessions = [], currentSession = null) {
   return streak;
 }
 
+function formatAIText(text = "") {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+}
+
 function getStudyStreakMessage(streakDays, currentSession) {
   if (currentSession) {
     return "You’re studying right now. I’ll keep tracking this session while you work.";
@@ -2065,7 +2071,7 @@ function showPracticeQuizFeedback(selectedIndex) {
         </p>
 
         <p class="ai-mentor-card-text">
-          ${question.explanation}
+          ${formatAIText(question.explanation)}
         </p>
 
         <button id="next-quiz-question" class="primary-btn" type="button">
@@ -2144,7 +2150,7 @@ async function renderPracticeQuizResults() {
         <p class="ai-mentor-card-title">Your learning summary</p>
 
         <p class="ai-mentor-card-text">
-          ${summary}
+          ${formatAIText(summary)}
         </p>
 
         ${
