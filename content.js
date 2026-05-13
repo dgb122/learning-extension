@@ -2371,7 +2371,7 @@ async function renderExplainTopicChat() {
         <textarea 
           id="explain-topic-input"
           class="ai-chat-input"
-          placeholder="Example: Explain SEO metrics in simple terms..."
+          placeholder="Example: Explain this concept in simple terms..."
         ></textarea>
 
         <button id="send-explain-topic" class="primary-btn" type="button">

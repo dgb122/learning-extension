@@ -5,7 +5,10 @@
   "manifest_version": 3,
 
   "permissions": ["sidePanel", "storage", "activeTab", "scripting"],
-  "host_permissions": ["https://*.coursera.org/*"],
+  "host_permissions": [
+    "https://*.coursera.org/*",
+    "https://learning-extension.onrender.com/*"
+  ],
 
   "background": {
     "service_worker": "background.js"
