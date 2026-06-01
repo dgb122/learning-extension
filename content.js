@@ -193,7 +193,8 @@ async function savePageContext(pageInfo) {
   }
 
   await chrome.storage.local.set({
-    learningContext
+    learningContext,
+    lastPageContext: pageInfo
   });
 
   console.log("Saved learning context", learningContext);
@@ -276,6 +277,8 @@ function watchCourseraPageChanges() {
     const currentTitle = document.title;
 
     if (currentUrl !== lastUrl || currentTitle !== lastTitle) {
+      saveCompletedSectionOnPageChange();
+
       lastUrl = currentUrl;
       lastTitle = currentTitle;
 
@@ -627,6 +630,8 @@ async function renderMentorContent() {
     "simulatedEmailReminder"
   ]);
 
+  await autoCloseInactiveStudySession(stored);
+
   if (!stored.currentUser) {
     renderAccountScreen();
     return;
@@ -909,7 +914,6 @@ async function renderMentorHome(savedAnswers, liveTracking, currentSession, sess
 
   const storedUserData = await chrome.storage.local.get(["currentUser"]);
   const currentUser = storedUserData.currentUser;
-
   const pageInfo = getCourseraPageInfo();
 
   savePageContext(pageInfo);
@@ -967,6 +971,22 @@ async function renderMentorHome(savedAnswers, liveTracking, currentSession, sess
     lastSessionEndedAt
   );
 
+  const todayStats = getTodayStudyStats({
+    sessions,
+    currentSession,
+    liveTracking
+  });
+
+  const recentSessionsHtml = getRecentSessionsHtml(sessions, currentSession);
+
+  const achievementsHtml = getAchievementsHtml({
+    sessions,
+    currentSession,
+    learningMemory,
+    streakDays,
+    todayActiveMinutes
+  });
+
   container.innerHTML = `
     <div class="ai-study-snapshot">
       <div class="ai-study-snapshot-top">
@@ -1003,7 +1023,7 @@ async function renderMentorHome(savedAnswers, liveTracking, currentSession, sess
         <span>${streakDays} day streak</span>
       </div>
 
-      <div class="progress-bar">
+            <div class="progress-bar">
         <div
           class="progress-fill"
           style="width: ${
@@ -1011,8 +1031,34 @@ async function renderMentorHome(savedAnswers, liveTracking, currentSession, sess
           }%;"
         ></div>
       </div>
-    </div>
- 
+
+      <div class="study-momentum-mini-grid">
+        <div>
+          <strong>${todayStats.activeMinutes} min</strong>
+          <span>today</span>
+        </div>
+
+        <div>
+          <strong>${todayStats.completedSessions}</strong>
+          <span>sessions</span>
+        </div>
+
+        <div>
+          <strong>${todayStats.quizCount}</strong>
+          <span>quiz actions</span>
+        </div>
+      </div>
+
+      <div class="study-bottom-row">
+        <button id="open-achievements-page" class="study-achievement-button" type="button">
+          ${achievementsHtml || `<span>🏅 Start earning achievements</span>`}
+        </button>
+
+        <button id="finish-study-session-btn" class="study-finish-btn" type="button">
+          Finish session
+        </button>
+      </div>
+    </div>    
 
     <div class="ai-mentor-card">
       <p class="ai-mentor-card-title">Recommended next step</p>
@@ -1074,6 +1120,38 @@ async function renderMentorHome(savedAnswers, liveTracking, currentSession, sess
       </button>
     </div>
   `;
+
+  document.getElementById("finish-study-session-btn")?.addEventListener("click", async () => {
+    const summary = await closeCurrentStudySession();
+
+    if (summary) {
+      showSessionCompleteToast(summary);
+      renderMentorContent();
+    }
+  });
+
+  document.getElementById("dismiss-section-feedback")?.addEventListener("click", async () => {
+    const stored = await chrome.storage.local.get(["latestSectionFeedback"]);
+
+    await chrome.storage.local.set({
+      latestSectionFeedback: {
+        ...(stored.latestSectionFeedback || {}),
+        dismissed: true
+      }
+    });
+
+    renderMentorContent();
+  });
+
+  document.getElementById("open-achievements-page")?.addEventListener("click", () => {
+    renderActivityPage({
+      pageInfo,
+      currentSession,
+      sessions,
+      lastSessionEndedAt,
+      totalActiveMs
+    });
+  });
 
   document.getElementById("open-activity-page")?.addEventListener("click", () => {
     renderActivityPage({
@@ -1143,6 +1221,305 @@ function getStudyStreakMessage(streakDays, currentSession) {
   }
 
   return "Start with one focused session today and I’ll track the streak from there.";
+}
+
+function getTodayStudyStats({ sessions = [], currentSession = null, liveTracking = {} }) {
+  const today = new Date().toDateString();
+
+  const todaysSessions = sessions.filter((session) => {
+    const startedAt = session.startedAt || session.startTime || session.createdAt;
+    return startedAt && new Date(startedAt).toDateString() === today;
+  });
+
+  if (currentSession?.startedAt && new Date(currentSession.startedAt).toDateString() === today) {
+    todaysSessions.push(currentSession);
+  }
+
+  const activeMs = todaysSessions.reduce((total, session) => {
+    return total + (session.activeMs || 0);
+  }, 0);
+
+  return {
+    activeMinutes: Math.floor(activeMs / 60000) || Math.floor((liveTracking?.activeMs || 0) / 60000),
+    completedSessions: todaysSessions.length,
+    quizCount: todaysSessions.filter((session) => session.pageType === "quiz").length
+  };
+}
+
+function getRecentSessionsHtml(sessions = [], currentSession = null) {
+  const recentSessions = [...sessions]
+    .slice(-3)
+    .reverse();
+
+  if (!recentSessions.length) {
+    return `<p class="ai-mentor-card-text muted">No completed study sessions yet.</p>`;
+  }
+
+  return recentSessions
+    .slice(0, 3)
+    .map((session) => {
+      const dateLabel = session.endedAt
+        ? new Date(session.endedAt).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })
+        : "Now";
+
+      return `
+        <div class="study-session-row">
+          <div>
+            <strong>${dateLabel}</strong>
+            <span>${session.pageTitle || "Coursera study session"}</span>
+          </div>
+          <p>${formatDuration(session.activeMs || 0)}</p>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function getAchievementsHtml({ sessions = [], currentSession = null, learningMemory = {}, streakDays = 0, todayActiveMinutes = 0 }) {
+  const achievements = [];
+
+  if (sessions.length + (currentSession ? 1 : 0) >= 1) {
+    achievements.push("First study session");
+  }
+
+  if (streakDays >= 3) {
+    achievements.push("3-day streak");
+  }
+
+  if (todayActiveMinutes >= 30) {
+    achievements.push("30 min focus");
+  }
+
+  if (learningMemory.quizMistakes?.length > 0) {
+    achievements.push("Mistake review started");
+  }
+
+  if (!achievements.length) return "";
+
+  return `
+    <div class="study-achievements">
+      ${achievements
+        .slice(0, 1)
+        .map((achievement) => `<span>🏅 ${achievement}</span>`)
+        .join("")}
+    </div>
+  `;
+}
+
+async function autoCloseInactiveStudySession(stored) {
+  const currentSession = stored.currentSession;
+
+  if (!currentSession) return;
+
+  const lastActiveAt =
+    currentSession.lastActiveAt ||
+    stored.liveTracking?.lastActiveAt ||
+    currentSession.startedAt;
+
+  const inactiveForMs = Date.now() - lastActiveAt;
+  const twentyMinutesMs = 20 * 60 * 1000;
+
+  if (inactiveForMs < twentyMinutesMs) return;
+
+  const endedSession = {
+    ...currentSession,
+    endedAt: lastActiveAt,
+    endedReason: "inactive_20_minutes",
+    durationMs: lastActiveAt - currentSession.startedAt
+  };
+
+  await chrome.storage.local.set({
+    currentSession: null,
+    sessions: [...(stored.sessions || []), endedSession],
+    lastSessionEndedAt: lastActiveAt
+  });
+}
+
+async function saveCompletedSectionOnPageChange() {
+  const stored = await chrome.storage.local.get([
+    "lastPageContext",
+    "completedSections"
+  ]);
+
+  const previousPage = stored.lastPageContext;
+  if (!previousPage?.title) return;
+
+  const completedAt = Date.now();
+  const timeSpentMs = previousPage.capturedAt
+    ? completedAt - previousPage.capturedAt
+    : 0;
+
+  const completedSection = {
+    title: previousPage.title,
+    pageType: previousPage.pageType || "course",
+    url: previousPage.url,
+    completedAt,
+    timeSpentMs
+  };
+
+  await chrome.storage.local.set({
+    completedSections: [
+      ...(stored.completedSections || []),
+      completedSection
+    ].slice(-20)
+  });
+
+  showSectionCompleteNotification(completedSection);
+}
+
+async function closeCurrentStudySession() {
+  const stored = await chrome.storage.local.get([
+    "currentSession",
+    "sessions",
+    "completedSections",
+    "lastSessionEndedAt",
+    "liveTracking"
+  ]);
+
+  const endedAt = Date.now();
+
+  const fallbackStartedAt =
+    stored.liveTracking?.startedAt ||
+    stored.liveTracking?.firstActiveAt ||
+    stored.liveTracking?.lastActiveAt ||
+    endedAt - 60 * 1000;
+
+  const sessionSource = stored.currentSession || {
+    startedAt: fallbackStartedAt,
+    pageTitle: getCourseraPageInfo()?.title || "Coursera study session",
+    pageType: getCourseraPageInfo()?.pageType || "course",
+    activeMs: stored.liveTracking?.activeMs || 60 * 1000
+  };
+
+  const startedAt =
+    sessionSource.startedAt ||
+    sessionSource.startTime ||
+    fallbackStartedAt;
+
+  const durationMs = Math.max(endedAt - startedAt, sessionSource.activeMs || 0);
+
+  const endedSession = {
+    ...sessionSource,
+    startedAt,
+    endedAt,
+    durationMs,
+    activeMs: sessionSource.activeMs || durationMs,
+    endedReason: "manual_finish"
+  };
+
+  const updatedSessions = [
+    ...(stored.sessions || []),
+    endedSession
+  ];
+
+  await chrome.storage.local.set({
+    currentSession: null,
+    sessions: updatedSessions,
+    lastSessionEndedAt: endedAt
+  });
+
+  const relatedSections = (stored.completedSections || []).filter(
+    (section) => section.completedAt >= startedAt
+  );
+
+  return {
+    minutes: Math.max(1, Math.floor(durationMs / 60000)),
+    sectionsVisited: relatedSections.length
+  };
+}
+
+function showSessionCompleteToast(summary) {
+  const existing = document.getElementById("session-complete-toast");
+  existing?.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "session-complete-toast";
+  toast.className = "section-complete-toast";
+
+  toast.innerHTML = `
+    <button class="section-toast-close" type="button">×</button>
+
+    <p class="section-toast-title">
+      Session complete
+    </p>
+
+    <p class="section-toast-text section-toast-section">
+      ${summary.minutes} minute${summary.minutes !== 1 ? "s" : ""} studied
+    </p>
+
+    <div class="section-toast-next-step">
+      <span>Saved to activity</span>
+      <p>
+        ${
+          summary.sectionsVisited > 0
+            ? `${summary.sectionsVisited} sections visited during this session.`
+            : "Your study session has been saved."
+        }
+      </p>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  toast.querySelector(".section-toast-close")?.addEventListener("click", () => {
+    toast.remove();
+  });
+
+  setTimeout(() => {
+    toast.remove();
+  }, 7000);
+}
+
+function showSectionCompleteNotification(section) {
+  if (!section?.title) return;
+
+  const existing = document.getElementById("section-complete-toast");
+  existing?.remove();
+
+  const recommendation = getSectionNextStepRecommendation();
+
+  const toast = document.createElement("div");
+  toast.id = "section-complete-toast";
+  toast.className = "section-complete-toast";
+
+  toast.innerHTML = `
+    <button class="section-toast-close" type="button">×</button>
+
+    <p class="section-toast-title">
+      Nice, section completed
+    </p>
+
+    <p class="section-toast-text section-toast-section">
+      ${section.title.replace(" | Coursera", "")}
+    </p>
+
+    <div class="section-toast-next-step">
+      <span>Recommended next step</span>
+      <p>${recommendation}</p>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  toast.querySelector(".section-toast-close")?.addEventListener("click", () => {
+    toast.remove();
+  });
+
+  setTimeout(() => {
+    toast.remove();
+  }, 8000);
+}
+
+function getSectionNextStepRecommendation() {
+  const suggestions = [
+    "Test your understanding before moving on.",
+    "Review this topic once more to reinforce the key concepts.",
+    "Continue to the next section while the material is still fresh.",
+    "Try a quick quiz to check your confidence on this topic.",
+    "Take a short break, then continue your study session."
+  ];
+
+  return suggestions[Math.floor(Math.random() * suggestions.length)];
 }
 
 async function checkSimulatedEmailReminder() {
@@ -1313,11 +1690,25 @@ function calculateTodaysMeaningfulEngagement({
   };
 }
 
-function renderActivityPage({ pageInfo, currentSession, sessions, lastSessionEndedAt, totalActiveMs }) {
+async function renderActivityPage({ pageInfo, currentSession, sessions, lastSessionEndedAt, totalActiveMs }) {
   const container = document.getElementById("ai-mentor-dynamic-content");
   if (!container) return;
 
   const streakDays = getStudyStreakDays(sessions, currentSession);
+  const stored = await chrome.storage.local.get(["completedSections"]);
+  const completedSections = stored.completedSections || [];
+  const recentSectionsHtml = completedSections
+    .slice(-5)
+    .reverse()
+    .map((section) => `
+      <div class="study-session-row">
+        <div>
+          <strong>${section.title}</strong>
+          <span>${formatLabel(section.pageType)} • ${new Date(section.completedAt).toLocaleDateString()}</span>
+        </div>
+      </div>
+    `)
+    .join("");
 
   container.innerHTML = `
     <button id="back-to-mentor-home" class="ai-back-btn" type="button">← Back</button>
@@ -1327,7 +1718,18 @@ function renderActivityPage({ pageInfo, currentSession, sessions, lastSessionEnd
       <p class="ai-mentor-card-text">${getStudyStreakMessage(streakDays, currentSession)}</p>
     </div>
 
-    <div class="activity-grid">
+    <div class="ai-mentor-card">
+      <p class="ai-mentor-card-title">Achievements</p>
+      ${getAchievementsHtml({
+        sessions,
+        currentSession,
+        learningMemory: {},
+        streakDays,
+        todayActiveMinutes: Math.floor((totalActiveMs || 0) / 60000)
+      }) || `<p class="ai-mentor-card-text muted">Keep studying to unlock your first achievement.</p>`}
+    </div>
+
+   <div class="activity-grid two-col">
       <div class="activity-stat-card">
         <p class="activity-stat-number">${streakDays}</p>
         <p class="activity-stat-label">day streak</p>
@@ -1335,13 +1737,13 @@ function renderActivityPage({ pageInfo, currentSession, sessions, lastSessionEnd
 
       <div class="activity-stat-card">
         <p class="activity-stat-number">${formatDuration(totalActiveMs)}</p>
-        <p class="activity-stat-label">total active study time</p>
+        <p class="activity-stat-label">active study time</p>
       </div>
+    </div>
 
-      <div class="activity-stat-card">
-        <p class="activity-stat-number">${sessions.length}</p>
-        <p class="activity-stat-label">completed sessions</p>
-      </div>
+    <div class="ai-mentor-card">
+      <p class="ai-mentor-card-title">Recent study sessions</p>
+      ${getRecentSessionsHtml(sessions, currentSession)}
     </div>
 
     <div class="ai-mentor-card">
@@ -1351,6 +1753,7 @@ function renderActivityPage({ pageInfo, currentSession, sessions, lastSessionEnd
       <p class="ai-mentor-card-text muted">Status: ${currentSession ? "Studying now" : "Not currently studying"}</p>
       <p class="ai-mentor-card-text muted">Last active: ${formatLastActive(lastSessionEndedAt)}</p>
     </div>
+
   `;
 
   document.getElementById("back-to-mentor-home")?.addEventListener("click", () => {
